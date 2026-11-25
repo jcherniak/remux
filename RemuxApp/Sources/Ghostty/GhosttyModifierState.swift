@@ -56,6 +56,17 @@ struct GhosttyModifierState: Equatable {
         )
     }
 
+    /// The text a terminal sends for one character typed with `modifiers` held: Shift capitalizes a letter,
+    /// Control makes its control character, and Alt puts ESC before it, so Alt+P is ESC p. Nil when the text
+    /// is not one character, or Control is held with a character it has no control code for.
+    static func characterText(_ character: String, modifiers: ShortcutModifiers) -> String? {
+        guard character.unicodeScalars.count == 1 else { return nil }
+        if modifiers.contains(.control), controlText(for: character) == nil { return nil }
+        var state = GhosttyModifierState()
+        state.toggle(modifiers)
+        return state.apply(to: character)
+    }
+
     /// The control character for text that is exactly one ASCII scalar Ctrl translates. Anything
     /// else, as a letter with a combining mark or an input method's commit, has none.
     static func controlText(for text: String) -> String? {

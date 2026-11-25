@@ -50,6 +50,12 @@ struct ShortcutExecutor {
                     mods: modifiers.ghosttyModifiers
                 )
             )
+
+        case .character(let character, let modifiers):
+            guard let text = GhosttyModifierState.characterText(character, modifiers: modifiers) else {
+                return false
+            }
+            return sendText(text)
         }
     }
 

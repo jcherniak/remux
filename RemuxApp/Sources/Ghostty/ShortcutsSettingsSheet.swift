@@ -715,7 +715,8 @@ struct ShortcutEditorSheet: View {
     @State private var textValue: String
     @State private var submitText: Bool
     @State private var controlValue: String
-    @State private var keyValue: ShortcutKey
+    @State private var keyChoice: ShortcutEditorKeyChoice
+    @State private var characterValue: String
     @State private var keyModifiers: ShortcutModifiers
 
     init(
@@ -736,7 +737,8 @@ struct ShortcutEditorSheet: View {
             _textValue = State(initialValue: text)
             _submitText = State(initialValue: submit)
             _controlValue = State(initialValue: "c")
-            _keyValue = State(initialValue: .escape)
+            _keyChoice = State(initialValue: .named(.escape))
+            _characterValue = State(initialValue: "")
             _keyModifiers = State(initialValue: [])
 
         case .control(let text):
@@ -744,7 +746,8 @@ struct ShortcutEditorSheet: View {
             _textValue = State(initialValue: "")
             _submitText = State(initialValue: true)
             _controlValue = State(initialValue: text)
-            _keyValue = State(initialValue: .escape)
+            _keyChoice = State(initialValue: .named(.escape))
+            _characterValue = State(initialValue: "")
             _keyModifiers = State(initialValue: [])
 
         case .key(let key, let modifiers):
@@ -752,7 +755,17 @@ struct ShortcutEditorSheet: View {
             _textValue = State(initialValue: "")
             _submitText = State(initialValue: true)
             _controlValue = State(initialValue: "c")
-            _keyValue = State(initialValue: key)
+            _keyChoice = State(initialValue: .named(key))
+            _characterValue = State(initialValue: "")
+            _keyModifiers = State(initialValue: modifiers)
+
+        case .character(let character, let modifiers):
+            _mode = State(initialValue: .key)
+            _textValue = State(initialValue: "")
+            _submitText = State(initialValue: true)
+            _controlValue = State(initialValue: "c")
+            _keyChoice = State(initialValue: .character)
+            _characterValue = State(initialValue: character)
             _keyModifiers = State(initialValue: modifiers)
 
         case .none:
@@ -760,7 +773,8 @@ struct ShortcutEditorSheet: View {
             _textValue = State(initialValue: "")
             _submitText = State(initialValue: true)
             _controlValue = State(initialValue: "c")
-            _keyValue = State(initialValue: .escape)
+            _keyChoice = State(initialValue: .named(.escape))
+            _characterValue = State(initialValue: "")
             _keyModifiers = State(initialValue: [])
         }
     }
@@ -853,19 +867,26 @@ struct ShortcutEditorSheet: View {
 
         case .key:
             ShortcutEditorValueRow(title: "Key") {
-                Picker("Key", selection: $keyValue) {
+                Picker("Key", selection: $keyChoice) {
+                    Text("Character").tag(ShortcutEditorKeyChoice.character)
                     ForEach(ShortcutKey.allCases) { key in
-                        Text(key.displayTitle).tag(key)
+                        Text(key.displayTitle).tag(ShortcutEditorKeyChoice.named(key))
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .tint(GhosttySheetPalette.secondary)
             }
+            if keyChoice == .character {
+                ShortcutEditorDivider()
+                ShortcutEditorTextFieldRow("Character, such as p", text: characterBinding)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
             ShortcutEditorDivider()
             ShortcutEditorToggleRow("Ctrl", isOn: modifierBinding(.control))
             ShortcutEditorDivider()
-            ShortcutEditorToggleRow("Opt", isOn: modifierBinding(.option))
+            ShortcutEditorToggleRow("Alt / Option", isOn: modifierBinding(.option))
             ShortcutEditorDivider()
             ShortcutEditorToggleRow("Shift", isOn: modifierBinding(.shift))
         }
@@ -892,7 +913,15 @@ struct ShortcutEditorSheet: View {
             return .control(trimmed)
 
         case .key:
-            return .key(keyValue, modifiers: keyModifiers)
+            switch keyChoice {
+            case .named(let key):
+                return .key(key, modifiers: keyModifiers)
+            case .character:
+                guard GhosttyModifierState.characterText(characterValue, modifiers: keyModifiers) != nil else {
+                    return nil
+                }
+                return .character(characterValue, modifiers: keyModifiers)
+            }
         }
     }
 
@@ -902,13 +931,8 @@ struct ShortcutEditorSheet: View {
             return submit ? "\(text)⏎" : text
         case .control(let text):
             return "^\(text.uppercased())"
-        case .key(let key, let modifiers):
-            let prefix = [
-                modifiers.contains(.control) ? "Ctrl" : nil,
-                modifiers.contains(.option) ? "Opt" : nil,
-                modifiers.contains(.shift) ? "Shift" : nil,
-            ].compactMap { $0 }.joined(separator: "-")
-            return prefix.isEmpty ? key.displayTitle : "\(prefix)-\(key.displayTitle)"
+        case .key, .character:
+            return sequence?.keyComboTitle ?? " "
         case .none:
             return " "
         }
@@ -937,6 +961,23 @@ struct ShortcutEditorSheet: View {
         )
         onSave(shortcut, request.favoriteOnSave)
         dismiss()
+    }
+
+    /// Keeps the field to one character, the last one typed, so a new key replaces the old one. A letter is kept
+    /// lowercase: capitals come from the Shift toggle, as on a keyboard.
+    private var characterBinding: Binding<String> {
+        Binding(
+            get: { characterValue },
+            set: { newValue in
+                guard let last = newValue.last else {
+                    characterValue = ""
+                    return
+                }
+                let character = String(last)
+                let lowercase = character.lowercased()
+                characterValue = lowercase.unicodeScalars.count == 1 ? lowercase : character
+            }
+        )
     }
 
     private func modifierBinding(_ modifier: ShortcutModifiers) -> Binding<Bool> {
@@ -1104,6 +1145,12 @@ private struct ShortcutEditorDivider: View {
             .frame(height: 1)
             .padding(.horizontal, 18)
     }
+}
+
+/// What the Key action sends: one of the named keys, or a typed character such as `p` for Alt+P.
+private enum ShortcutEditorKeyChoice: Hashable {
+    case character
+    case named(ShortcutKey)
 }
 
 private enum ShortcutEditorMode: String, CaseIterable, Identifiable {

@@ -195,6 +195,96 @@ final class ShortcutExecutorTests: XCTestCase {
         XCTAssertEqual(sentEvents.first?.keyCode, .tab)
         XCTAssertEqual(sentEvents.first?.mods, [.shift, .ctrl])
     }
+
+    func testFunctionKeyShortcutSendsItsKeyCode() async {
+        var sentEvents: [GhosttySurfaceKeyEvent] = []
+        let executor = ShortcutExecutor(
+            sendText: { _ in
+                XCTFail("Key shortcut should not send text")
+                return false
+            },
+            sendKey: {
+                sentEvents.append($0)
+                return true
+            }
+        )
+
+        let didExecute = await executor.execute(.key(.f5, modifiers: [.option]))
+
+        XCTAssertTrue(didExecute)
+        XCTAssertEqual(sentEvents.first?.keyCode, .f5)
+        XCTAssertEqual(sentEvents.first?.mods, [.alt])
+    }
+
+    func testCharacterShortcutSendsAltAsEscapePrefix() async {
+        var sentTexts: [String] = []
+        let executor = ShortcutExecutor(
+            sendText: {
+                sentTexts.append($0)
+                return true
+            },
+            sendKey: { _ in
+                XCTFail("Character shortcut should not send a key event")
+                return false
+            }
+        )
+
+        let didExecute = await executor.execute(.character("p", modifiers: [.option]))
+
+        XCTAssertTrue(didExecute)
+        XCTAssertEqual(sentTexts, ["\u{1B}p"])
+    }
+
+    func testCharacterShortcutAppliesShiftAndControl() async {
+        var sentTexts: [String] = []
+        let executor = ShortcutExecutor(
+            sendText: {
+                sentTexts.append($0)
+                return true
+            },
+            sendKey: { _ in false }
+        )
+
+        let altShift = await executor.execute(.character("p", modifiers: [.option, .shift]))
+        let control = await executor.execute(.character("a", modifiers: [.control]))
+        let plain = await executor.execute(.character("x", modifiers: []))
+
+        XCTAssertTrue(altShift)
+        XCTAssertTrue(control)
+        XCTAssertTrue(plain)
+
+        XCTAssertEqual(sentTexts, ["\u{1B}P", "\u{01}", "x"])
+    }
+
+    func testCharacterShortcutWithoutControlCodeIsRejected() async {
+        let executor = ShortcutExecutor(
+            sendText: { _ in
+                XCTFail("Ctrl with a character that has no control code should not send text")
+                return true
+            },
+            sendKey: { _ in false }
+        )
+
+        let controlDigit = await executor.execute(.character("1", modifiers: [.control]))
+        let twoCharacters = await executor.execute(.character("ab", modifiers: [.option]))
+
+        XCTAssertFalse(controlDigit)
+        XCTAssertFalse(twoCharacters)
+    }
+
+    func testCharacterShortcutRoundTripsThroughCoding() throws {
+        let sequence = ShortcutSequence.character("p", modifiers: [.option])
+        let data = try JSONEncoder().encode(sequence)
+        XCTAssertEqual(try JSONDecoder().decode(ShortcutSequence.self, from: data), sequence)
+    }
+
+    func testKeyComboTitles() {
+        XCTAssertEqual(ShortcutSequence.character("p", modifiers: [.option]).keyComboTitle, "Alt-P")
+        XCTAssertEqual(ShortcutSequence.key(.tab, modifiers: [.shift]).keyComboTitle, "Shift-Tab")
+        XCTAssertEqual(ShortcutSequence.key(.pageDown).keyComboTitle, "PgDn")
+        XCTAssertEqual(ShortcutSequence.key(.f12, modifiers: [.control, .option]).keyComboTitle, "Ctrl-Alt-F12")
+        XCTAssertNil(ShortcutSequence.control("c").keyComboTitle)
+    }
 }
 
 private enum SentShortcutOperation: Equatable {

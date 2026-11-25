@@ -270,6 +270,9 @@ enum ShortcutSequence: Codable, Equatable, Sendable {
     case text(String, submit: Bool)
     case control(String)
     case key(ShortcutKey, modifiers: ShortcutModifiers = [])
+    /// One typed character, such as `p`, with modifiers: Alt+P, Ctrl+Shift+A. The character is sent as a
+    /// terminal types it with those modifiers held (see `GhosttyModifierState.characterText`).
+    case character(String, modifiers: ShortcutModifiers = [])
 
     private enum CodingKeys: String, CodingKey {
         case kind
@@ -283,6 +286,7 @@ enum ShortcutSequence: Codable, Equatable, Sendable {
         case text
         case control
         case key
+        case character
     }
 
     init(from decoder: Decoder) throws {
@@ -299,6 +303,11 @@ enum ShortcutSequence: Codable, Equatable, Sendable {
         case .key:
             self = .key(
                 try container.decode(ShortcutKey.self, forKey: .key),
+                modifiers: try container.decodeIfPresent(ShortcutModifiers.self, forKey: .modifiers) ?? []
+            )
+        case .character:
+            self = .character(
+                try container.decode(String.self, forKey: .text),
                 modifiers: try container.decodeIfPresent(ShortcutModifiers.self, forKey: .modifiers) ?? []
             )
         }
@@ -318,6 +327,10 @@ enum ShortcutSequence: Codable, Equatable, Sendable {
             try container.encode(Kind.key, forKey: .kind)
             try container.encode(key, forKey: .key)
             try container.encode(modifiers, forKey: .modifiers)
+        case .character(let character, let modifiers):
+            try container.encode(Kind.character, forKey: .kind)
+            try container.encode(character, forKey: .text)
+            try container.encode(modifiers, forKey: .modifiers)
         }
     }
 }
@@ -331,6 +344,15 @@ struct ShortcutModifiers: OptionSet, Codable, Equatable, Sendable {
 
     init(rawValue: Int) {
         self.rawValue = rawValue
+    }
+
+    /// The modifiers as a shortcut's label names them, in the order keyboards list them: "Ctrl-Alt-Shift".
+    var displayPrefix: String {
+        [
+            contains(.control) ? "Ctrl" : nil,
+            contains(.option) ? "Alt" : nil,
+            contains(.shift) ? "Shift" : nil,
+        ].compactMap { $0 }.joined(separator: "-")
     }
 }
 
@@ -348,6 +370,20 @@ enum ShortcutKey: String, CaseIterable, Codable, Identifiable, Sendable {
     case end
     case pageUp
     case pageDown
+    case space
+    case insert
+    case f1
+    case f2
+    case f3
+    case f4
+    case f5
+    case f6
+    case f7
+    case f8
+    case f9
+    case f10
+    case f11
+    case f12
 
     var id: String { rawValue }
 
@@ -379,6 +415,32 @@ enum ShortcutKey: String, CaseIterable, Codable, Identifiable, Sendable {
             "PgUp"
         case .pageDown:
             "PgDn"
+        case .space:
+            "Space"
+        case .insert:
+            "Ins"
+        case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12:
+            rawValue.uppercased()
         }
+    }
+}
+
+extension ShortcutSequence {
+    /// How a key or character shortcut reads, as "Alt-P" or "Shift-Tab"; nil for text and Ctrl shortcuts,
+    /// which show what they type instead.
+    var keyComboTitle: String? {
+        let prefix: String
+        let name: String
+        switch self {
+        case .text, .control:
+            return nil
+        case .key(let key, let modifiers):
+            prefix = modifiers.displayPrefix
+            name = key.displayTitle
+        case .character(let character, let modifiers):
+            prefix = modifiers.displayPrefix
+            name = character == " " ? "Space" : character.uppercased()
+        }
+        return prefix.isEmpty ? name : "\(prefix)-\(name)"
     }
 }
