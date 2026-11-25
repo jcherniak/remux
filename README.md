@@ -28,7 +28,7 @@ Remux connects to your servers over SSH and attaches to the tmux and herdr sessi
 - **Attachments**: Attach photos or files to a message. Remux uploads them to your server and adds their paths to the message, and you can mark up images first.
 - **Previews**: Long-press a file path to open it, whether it's code, an image, a PDF or an HTML page. A localhost address opens the dev server on that machine.
 - **Shortcuts**: Hold the first toolbar key to run a saved command. Sets for the shell, Claude Code and Codex are included, and you can add your own. A shortcut can type text, or send a key with Ctrl, Alt and Shift: a character such as Alt+P, Tab or Shift+Tab, the arrows, Page Up and Down, Home, End, Insert, Space or F1 to F12.
-- **Keyboard**: Pick which keys the toolbar shows, and long-press the terminal for arrow keys, like a joystick. Drag further to go faster.
+- **Keyboard**: Pick which keys the toolbar shows, swipe the keys for more pages, or turn on a second row that shows up to eight keys at once. Swipe up on the toolbar to open the composer. Long-press the terminal for arrow keys, like a joystick. Drag further to go faster.
 - **Sign-in**: Use a password, a private key, a Secure Enclave key that never leaves your iPhone, or Tailscale SSH. Passwords and private keys stay in the iOS Keychain.
 
 ## Requirements

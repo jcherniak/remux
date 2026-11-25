@@ -329,10 +329,39 @@ struct TerminalToolbarKeys: Equatable, Codable, Sendable {
         TerminalToolbarKeyPage(first: .shiftTab, second: .alt, third: .shift),
     ])
 
+    /// The most keys the second row holds: eight fit across the narrowest iPhone at a toolbar key's width.
+    static let secondRowMaximumCount = 8
+    /// The keys a second row starts with when it is turned on: the keys a TUI wants most that the pages hold
+    /// one at a time.
+    static let defaultSecondRow: [TerminalToolbarKey] = [
+        .escape, .shiftTab, .arrowLeft, .arrowUp, .arrowDown, .arrowRight, .pageUp, .pageDown,
+    ]
+
     private(set) var pages: [TerminalToolbarKeyPage]
 
-    init(pages: [TerminalToolbarKeyPage]) {
+    /// Keys shown all at once on a row above the toolbar, or nil for the toolbar alone. Opt-in: the row costs a
+    /// key's height above the keyboard.
+    var secondRow: [TerminalToolbarKey]? {
+        didSet { secondRow = Self.normalizedSecondRow(secondRow) }
+    }
+
+    /// Whether swiping up on the toolbar opens the composer, the way dragging down on the composer hides the keyboard.
+    var swipeUpOpensComposer: Bool
+
+    init(
+        pages: [TerminalToolbarKeyPage],
+        secondRow: [TerminalToolbarKey]? = nil,
+        swipeUpOpensComposer: Bool = true
+    ) {
         self.pages = pages.isEmpty ? Self.default.pages : pages
+        self.secondRow = Self.normalizedSecondRow(secondRow)
+        self.swipeUpOpensComposer = swipeUpOpensComposer
+    }
+
+    /// A row is never empty and never longer than the most that fit; an empty row is no row.
+    private static func normalizedSecondRow(_ row: [TerminalToolbarKey]?) -> [TerminalToolbarKey]? {
+        guard let row, !row.isEmpty else { return nil }
+        return Array(row.prefix(secondRowMaximumCount))
     }
 
     /// A single page.
@@ -345,16 +374,19 @@ struct TerminalToolbarKeys: Equatable, Codable, Sendable {
         set { pages[index] = newValue }
     }
 
-    /// Every key, page by page.
+    /// Every key, page by page, then the second row's.
     var values: [TerminalToolbarKey] {
-        pages.flatMap(\.values)
+        pages.flatMap(\.values) + (secondRow ?? [])
     }
 
     var summary: String {
-        guard pages.count > 1 else { return pages[0].summary }
-        return pages.enumerated()
-            .map { "Page \($0.offset + 1): \($0.element.summary)" }
-            .joined(separator: ". ")
+        let pagesSummary = pages.count > 1
+            ? pages.enumerated()
+                .map { "Page \($0.offset + 1): \($0.element.summary)" }
+                .joined(separator: ". ")
+            : pages[0].summary
+        guard let secondRow else { return pagesSummary }
+        return pagesSummary + ". Second row: " + secondRow.map(\.settingsTitle).joined(separator: ", ")
     }
 
     /// The first page, which the toolbar shows until it is swiped.
@@ -373,17 +405,28 @@ struct TerminalToolbarKeys: Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case pages
+        case secondRow
+        case swipeUpOpensComposer
     }
 
-    /// A page with a key this build doesn't know is left out, so a newer build's settings still load.
+    /// A page with a key this build doesn't know is left out, so a newer build's settings still load; so is such a
+    /// key on the second row. Settings saved before the second row and the swipe existed load without them.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(pages: try container.decode([DecodedPage].self, forKey: .pages).compactMap(\.page))
+        let secondRow = try container.decodeIfPresent([String].self, forKey: .secondRow)?
+            .compactMap(TerminalToolbarKey.init(rawValue:))
+        self.init(
+            pages: try container.decode([DecodedPage].self, forKey: .pages).compactMap(\.page),
+            secondRow: secondRow,
+            swipeUpOpensComposer: try container.decodeIfPresent(Bool.self, forKey: .swipeUpOpensComposer) ?? true
+        )
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(pages, forKey: .pages)
+        try container.encodeIfPresent(secondRow, forKey: .secondRow)
+        try container.encode(swipeUpOpensComposer, forKey: .swipeUpOpensComposer)
     }
 
     private struct DecodedPage: Decodable {

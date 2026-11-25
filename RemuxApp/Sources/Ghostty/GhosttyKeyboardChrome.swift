@@ -161,6 +161,8 @@ struct GhosttyKeyboardChrome<ComposerContent: View>: View {
     @AppStorage("terminal.toolbar.pagesGlideShown") private var pagesGlideShown = false
     /// The first-time glide's sideways shift, 0 at rest.
     @State private var glideOffset: CGFloat = 0
+    /// Set once a swipe up has opened the composer, so the rest of the same swipe doesn't open it again.
+    @State private var hasOpenedComposerFromSwipe = false
 
     /// UI tests run without the glide, which would move keys under their taps, unless a test asks for it.
     private static var playsFirstTimeGlide: Bool {
@@ -195,12 +197,63 @@ struct GhosttyKeyboardChrome<ComposerContent: View>: View {
     }
 
     private var standardSelectorRow: some View {
-        HStack(spacing: isCompact ? 6 : 10) {
-            terminalKeyControls
-            navigationControls
-            inputControls
+        VStack(spacing: isCompact ? 6 : 8) {
+            if let secondRow = toolbarKeys.secondRow {
+                secondKeyRow(secondRow)
+            }
+
+            HStack(spacing: isCompact ? 6 : 10) {
+                terminalKeyControls
+                navigationControls
+                inputControls
+            }
         }
         .frame(maxWidth: .infinity, alignment: .center)
+        // Beside the keys' own gestures, so taps and the pages' sideways swipe still work: only a swipe that goes
+        // mostly up opens the composer. Its row replaces this one at once, so the key under the finger isn't sent.
+        .simultaneousGesture(
+            composerSwipeGesture,
+            including: toolbarKeys.swipeUpOpensComposer ? .all : .subviews
+        )
+    }
+
+    private var composerSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                guard !hasOpenedComposerFromSwipe, !isInteractionLocked else { return }
+                let upwardDistance = -value.translation.height
+                guard upwardDistance >= 24,
+                      upwardDistance > abs(value.translation.width) * 1.5 else { return }
+                hasOpenedComposerFromSwipe = true
+                Haptic.selection()
+                onOpenComposer()
+            }
+            .onEnded { _ in
+                hasOpenedComposerFromSwipe = false
+            }
+    }
+
+    /// Every key of the second row on show at once, spread across the toolbar's width.
+    private func secondKeyRow(_ keys: [TerminalToolbarKey]) -> some View {
+        controlGroup {
+            HStack(spacing: keySpacing) {
+                ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
+                    let isArmed = key.modifier.map(armedModifiers.contains) ?? false
+                    accessoryKey(
+                        label: key.toolbarLabel,
+                        accessibilityLabel: key.settingsTitle,
+                        accessibilityHint: toolbarKeyAccessibilityHint(key),
+                        accessibilityIdentifier: "terminal.toolbar-row-key.\(index)",
+                        accessibilityValue: isArmed ? "Armed" : nil,
+                        isArmed: isArmed
+                    ) {
+                        activateToolbarKey(key)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .accessibilityIdentifier("terminal.toolbar-row")
     }
 
     private var composerSelectorRow: some View {

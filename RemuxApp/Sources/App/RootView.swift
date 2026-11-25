@@ -2403,6 +2403,16 @@ private struct TerminalToolbarKeysSettingsView: View {
                 .libraryHomeListRowSurface()
             }
 
+            secondRowSection
+
+            Section {
+                Toggle("Swipe Up to Compose", isOn: $toolbarKeys.swipeUpOpensComposer)
+                    .accessibilityIdentifier("settings.toolbar-keys.swipe-compose")
+            } footer: {
+                Text("Swipe up on the toolbar to open the composer without reaching for its button.")
+            }
+            .libraryHomeListRowSurface()
+
             if toolbarKeys != .default {
                 Section {
                     Button("Reset to Defaults") {
@@ -2419,6 +2429,80 @@ private struct TerminalToolbarKeysSettingsView: View {
         .accessibilityIdentifier("settings.toolbar-keys.form")
     }
 
+    @ViewBuilder
+    private var secondRowSection: some View {
+        Section {
+            Toggle("Show Second Row", isOn: secondRowEnabled)
+                .accessibilityIdentifier("settings.toolbar-keys.second-row")
+
+            if let row = toolbarKeys.secondRow {
+                ForEach(row.indices, id: \.self) { index in
+                    Picker("Key \(index + 1)", selection: secondRowKey(index)) {
+                        toolbarKeyOptions
+                    }
+                    .pickerStyle(.navigationLink)
+                    .accessibilityIdentifier("settings.toolbar-keys.row-slot.\(index)")
+                }
+                .onDelete { offsets in
+                    // The last key goes with the row itself, through the toggle.
+                    guard row.count > offsets.count else { return }
+                    toolbarKeys.secondRow?.remove(atOffsets: offsets)
+                }
+
+                if row.count < TerminalToolbarKeys.secondRowMaximumCount {
+                    Button("Add Key") {
+                        toolbarKeys.secondRow?.append(.escape)
+                    }
+                    .accessibilityIdentifier("settings.toolbar-keys.row-add")
+                }
+            }
+        } header: {
+            Text("Second Row")
+        } footer: {
+            Text(
+                "Shows up to \(TerminalToolbarKeys.secondRowMaximumCount) keys at once on a row above the toolbar. "
+                    + "Swipe a key left to remove it."
+            )
+        }
+        .libraryHomeListRowSurface()
+    }
+
+    private var secondRowEnabled: Binding<Bool> {
+        Binding(
+            get: { toolbarKeys.secondRow != nil },
+            set: { isOn in
+                toolbarKeys.secondRow = isOn ? TerminalToolbarKeys.defaultSecondRow : nil
+            }
+        )
+    }
+
+    private func secondRowKey(_ index: Int) -> Binding<TerminalToolbarKey> {
+        Binding(
+            get: {
+                guard let row = toolbarKeys.secondRow, row.indices.contains(index) else { return .escape }
+                return row[index]
+            },
+            set: { value in
+                guard toolbarKeys.secondRow?.indices.contains(index) == true else { return }
+                toolbarKeys.secondRow?[index] = value
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var toolbarKeyOptions: some View {
+        Section("Modifiers") {
+            ForEach(TerminalToolbarKey.modifierKeys, id: \.self) { key in
+                Text(key.settingsTitle).tag(key)
+            }
+        }
+        Section("Keys") {
+            ForEach(TerminalToolbarKey.sendingKeys, id: \.self) { key in
+                Text(key.settingsTitle).tag(key)
+            }
+        }
+    }
+
     private var footer: String {
         toolbarKeys.pages.count > 1
             ? "Swipe the toolbar keys to switch pages. Touch and hold a page's first key to open Shortcuts."
@@ -2433,16 +2517,7 @@ private struct TerminalToolbarKeysSettingsView: View {
         index: Int
     ) -> some View {
         Picker(title, selection: binding(page: page, slot: slot)) {
-            Section("Modifiers") {
-                ForEach(TerminalToolbarKey.modifierKeys, id: \.self) { key in
-                    Text(key.settingsTitle).tag(key)
-                }
-            }
-            Section("Keys") {
-                ForEach(TerminalToolbarKey.sendingKeys, id: \.self) { key in
-                    Text(key.settingsTitle).tag(key)
-                }
-            }
+            toolbarKeyOptions
         }
         .pickerStyle(.navigationLink)
         .accessibilityIdentifier("settings.toolbar-keys.slot.\(page * 3 + index)")

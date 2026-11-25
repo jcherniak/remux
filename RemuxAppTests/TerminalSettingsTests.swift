@@ -104,6 +104,46 @@ final class TerminalSettingsTests: XCTestCase {
         XCTAssertEqual(keys.compactSummary, "esc · esc · pgdn")
     }
 
+    func testSecondRowIsOffByDefaultAndKeepsAtMostEightKeys() {
+        XCTAssertNil(TerminalToolbarKeys.default.secondRow)
+        XCTAssertTrue(TerminalToolbarKeys.default.swipeUpOpensComposer)
+
+        var keys = TerminalToolbarKeys.default
+        keys.secondRow = TerminalToolbarKeys.defaultSecondRow + [.home, .end]
+        XCTAssertEqual(keys.secondRow?.count, TerminalToolbarKeys.secondRowMaximumCount)
+
+        keys.secondRow = []
+        XCTAssertNil(keys.secondRow)
+    }
+
+    func testSecondRowModifiersCanBeArmed() {
+        let keys = TerminalToolbarKeys(
+            pages: [TerminalToolbarKeyPage(first: .escape, second: .tab, third: .enter)],
+            secondRow: [.control, .arrowUp]
+        )
+
+        XCTAssertEqual(keys.modifiers, [.control])
+        XCTAssertEqual(keys.summary, "Escape, Tab, Enter. Second row: Control, Up Arrow")
+    }
+
+    func testSecondRowAndSwipeRoundTripAndOlderLayoutsLoadWithout() throws {
+        let keys = TerminalToolbarKeys(
+            pages: TerminalToolbarKeys.default.pages,
+            secondRow: [.escape, .pageUp, .pageDown],
+            swipeUpOpensComposer: false
+        )
+        let decoded = try JSONDecoder().decode(TerminalToolbarKeys.self, from: JSONEncoder().encode(keys))
+        XCTAssertEqual(decoded, keys)
+
+        let older = Data(#"{"pages":[{"first":"control","second":"escape","third":"tab"}]}"#.utf8)
+        let loaded = try JSONDecoder().decode(TerminalToolbarKeys.self, from: older)
+        XCTAssertNil(loaded.secondRow)
+        XCTAssertTrue(loaded.swipeUpOpensComposer)
+
+        let newer = Data(#"{"pages":[{"first":"control","second":"escape","third":"tab"}],"secondRow":["escape","f13"]}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(TerminalToolbarKeys.self, from: newer).secondRow, [.escape])
+    }
+
     func testToolbarKeysKnownBySymbolDrawTheSymbol() {
         XCTAssertEqual(TerminalToolbarKey.enter.toolbarLabel, .symbol("return"))
         XCTAssertEqual(TerminalToolbarKey.backspace.toolbarLabel, .symbol("delete.left"))
